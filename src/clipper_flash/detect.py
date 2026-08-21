@@ -21,6 +21,11 @@ class DetectReport:
     new_streams: list[Stream]
     known: int
     skipped_non_live: int
+    failed_probes: list[dict] | None = None
+
+    def __post_init__(self) -> None:
+        if self.failed_probes is None:
+            self.failed_probes = []
 
 
 def detect_new_streams(
@@ -46,6 +51,7 @@ def detect_new_streams(
     new_streams: list[Stream] = []
     known = 0
     skipped_non_live = 0
+    failed_probes: list[dict] = []
 
     for entry in entries:
         existing = state.get_stream(conn, entry.video_id)
@@ -53,7 +59,12 @@ def detect_new_streams(
             known += 1
             continue
 
-        info = prober(entry.url)
+        try:
+            info = prober(entry.url)
+        except Exception as exc:  # noqa: BLE001 - one bad video must not kill the scan
+            failed_probes.append({"video_id": entry.video_id, "error": str(exc)[:300]})
+            continue
+
         was_live = info.get("live_broadcast_content") == "was_live"
         if not was_live and not include_all:
             skipped_non_live += 1
@@ -88,6 +99,7 @@ def detect_new_streams(
         new_streams=new_streams,
         known=known,
         skipped_non_live=skipped_non_live,
+        failed_probes=failed_probes,
     )
 
 

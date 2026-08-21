@@ -72,8 +72,12 @@ def probe(path: str | Path) -> dict:
 
 
 def _ass_filter_arg(ass_path: Path) -> str:
-    """Escape an ass path for use inside a filtergraph (windows-safe)."""
-    p = ass_path.resolve().as_posix()
+    """Escape an ass path for use inside a filtergraph (windows-safe).
+
+    The drive-letter colon must be escaped or ffmpeg splits it as an arg
+    separator; forward slashes keep backslash escapes out of the picture.
+    """
+    p = ass_path.resolve().as_posix().replace(":", "\\:")
     return f"ass='{p}'"
 
 
@@ -128,9 +132,9 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
 
     video_chain = chain
     if ass_path:
-        video_chain += f"\n[vpre]{_ass_filter_arg(ass_path)},format=yuv420p[vout]"
+        video_chain += f";[vpre]{_ass_filter_arg(ass_path)},format=yuv420p[vout]"
     else:
-        video_chain += "\n[vpre]format=yuv420p[vout]"
+        video_chain += ";[vpre]format=yuv420p[vout]"
 
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",

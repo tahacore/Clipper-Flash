@@ -82,6 +82,24 @@ def probe_video(url: str, timeout: float = 60.0) -> dict:
     return info
 
 
+def probe_channel_flat(url: str, timeout: float = 60.0) -> dict:
+    """Flat-extract a channel page (no per-video requests). Gets channel_id."""
+    import yt_dlp
+
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        "playlist_items": "1",
+        "socket_timeout": timeout,
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if not info:
+        raise YouTubeError(f"could not extract channel info for {url}")
+    return info
+
+
 def extract_video_id(ref: str) -> str | None:
     """Accept raw IDs, watch URLs, youtu.be links."""
     ref = ref.strip()
@@ -98,19 +116,32 @@ def resolve_channel_id(ref: str) -> str:
     if m:
         return m.group(1)
 
-    # Try a metadata probe; works for @handle URLs and plain video URLs.
-    candidates = [ref]
+    # Candidate channel-page URLs (flat extraction avoids probing videos,
+    # which fails when the latest upload is live/processing).
     if ref.startswith("@"):
-        candidates = [f"https://www.youtube.com/{ref}"]
-    elif extract_video_id(ref):
+        candidates = [f"https://www.youtube.com/{ref}/videos", f"https://www.youtube.com/{ref}"]
+    elif "youtube.com" in ref:
+        candidates = [ref.rstrip("/"), ref.rstrip("/") + "/videos"]
+    else:
+        candidates = []
         vid = extract_video_id(ref)
-        assert vid is not None
-        candidates = [WATCH_URL.format(video_id=vid)]
+        if vid:
+            candidates.append(WATCH_URL.format(video_id=vid))
 
     for cand in candidates:
         try:
-            info = probe_video(cand)
+            info = probe_channel_flat(cand)
         except Exception:  # noqa: BLE001 - try next candidate form
+            continue
+        cid = info.get("channel_id") or info.get("channel_id") or ""
+        if _CHANNEL_ID_RE.fullmatch(cid):
+            return cid
+
+    # Last resort: probe an individual video from the channel.
+    for cand in candidates:
+        try:
+            info = probe_video(cand)
+        except Exception:  # noqa: BLE001
             continue
         cid = info.get("channel_id") or ""
         if _CHANNEL_ID_RE.fullmatch(cid):

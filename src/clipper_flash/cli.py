@@ -119,6 +119,7 @@ def detect_cmd(
         "scanned": report.scanned,
         "known": report.known,
         "skipped_non_live": report.skipped_non_live,
+        "failed_probes": report.failed_probes,
         "new_streams": [_stream_dict(s) for s in report.new_streams],
     }
     if as_json:
@@ -130,6 +131,10 @@ def detect_cmd(
     typer.echo(f"known:     {report.known} already tracked")
     if report.skipped_non_live:
         typer.echo(f"skipped:   {report.skipped_non_live} non-livestream uploads")
+    if report.failed_probes:
+        typer.echo(
+            f"unprobeable: {len(report.failed_probes)} (live/processing) - will retry next scan"
+        )
     if not report.new_streams:
         typer.echo("new:       nothing to process")
         return
@@ -185,6 +190,7 @@ def transcript(
     except Exception as exc:  # noqa: BLE001
         _fail(str(exc))
 
+    out.parent.mkdir(parents=True, exist_ok=True)
     t.save(out)
     known = state.get_stream(conn, t.video_id)
     if known:

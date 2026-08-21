@@ -108,7 +108,7 @@ def vertical_split(
         f"pad={out_w}:{strip_h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[camstrip]"
     )
     merge = "[screen][camstrip]vstack=inputs=2[vpre]"
-    return "\n".join([screen, camstrip, merge]), Canvas(out_w, out_h)
+    return ";".join([screen, camstrip, merge]), Canvas(out_w, out_h)
 
 
 def face_crop(
