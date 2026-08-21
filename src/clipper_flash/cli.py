@@ -9,6 +9,11 @@ app = typer.Typer(
 )
 
 
+@app.callback()
+def _root() -> None:
+    """Clipper-Flash: turn YouTube livestreams into clips with your coding agent."""
+
+
 @app.command()
 def version() -> None:
     """Print the Clipper-Flash version."""
