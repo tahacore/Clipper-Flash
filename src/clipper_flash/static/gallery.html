@@ -6,60 +6,104 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root { color-scheme: dark; }
-  body { font-family: system-ui, sans-serif; background:#0e1116; color:#e6e6e6;
-         max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.4rem; } h1 span { color:#f5c518; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background:#0b0e13; color:#e6e6e6;
+         margin:0; padding:2rem 1.5rem; }
+  .wrap { max-width: 1200px; margin: 0 auto; }
+  h1 { font-size:1.3rem; display:flex; align-items:center; gap:.5rem; }
+  h1 span { color:#f5c518; }
   .muted { color:#8b93a1; font-size:.85rem; }
-  .stream { background:#161b23; border:1px solid #232a35; border-radius:12px;
-            padding:1rem 1.25rem; margin:1rem 0; }
-  .status { display:inline-block; padding:.1rem .55rem; border-radius:99px;
-            font-size:.75rem; background:#232a35; margin-left:.5rem; }
-  .clips { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
-           gap:1rem; margin-top:.75rem; }
-  video { width:100%; border-radius:8px; background:#000; aspect-ratio:9/16;
-          object-fit:contain; }
-  video.wide { aspect-ratio:16/9; }
-  .clip-title { font-size:.85rem; margin:.4rem 0 .1rem; }
-  a { color:#7ab3ff; text-decoration:none; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+          gap:1.1rem; margin-top:1.25rem; }
+  .card { background:#141922; border:1px solid #222a36; border-radius:12px;
+          overflow:hidden; transition:border-color .15s; cursor:pointer; }
+  .card:hover { border-color:#f5c518; }
+  .poster { position:relative; aspect-ratio:9/16; background:#000;
+            display:flex; align-items:center; justify-content:center; }
+  .poster.wide { aspect-ratio:16/9; }
+  .poster img { width:100%; height:100%; object-fit:cover; }
+  .dur { position:absolute; bottom:.5rem; right:.5rem; background:rgba(0,0,0,.75);
+         padding:.05rem .4rem; border-radius:6px; font-size:.72rem; }
+  .badge { position:absolute; top:.5rem; left:.5rem; background:rgba(245,197,24,.9);
+           color:#000; padding:.05rem .45rem; border-radius:6px; font-size:.68rem;
+           font-weight:600; }
+  .meta { padding:.6rem .7rem .8rem; }
+  .clip-title { font-size:.85rem; line-height:1.25; margin:0 0 .3rem;
+                display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+                overflow:hidden; }
+  .sub { font-size:.72rem; color:#8b93a1; }
+  dialog { background:#141922; color:#e6e6e6; border:1px solid #222a36;
+           border-radius:14px; max-width:min(92vw, 480px); padding:1rem; }
+  dialog::backdrop { background:rgba(0,0,0,.7); }
+  dialog video { width:100%; border-radius:8px; background:#000; }
+  .empty { text-align:center; padding:4rem 1rem; color:#8b93a1; }
+  code { background:#1c232e; padding:.1rem .35rem; border-radius:5px; }
+  details { margin-top:2rem; }
+  summary { cursor:pointer; color:#8b93a1; font-size:.85rem; }
+  .status-row { display:flex; gap:.5rem; align-items:center; padding:.35rem 0;
+                border-bottom:1px solid #161c26; font-size:.8rem; }
+  .pill { padding:.05rem .55rem; border-radius:99px; font-size:.7rem;
+          background:#1c232e; }
 </style>
 </head>
 <body>
-<h1>⚡ <span>Clipper-Flash</span></h1>
-<p class="muted">Streams tracked in state.db · clips served from output/</p>
-<div id="app"><p class="muted">loading…</p></div>
+<div class="wrap">
+  <h1>⚡ <span>Clipper-Flash</span>
+      <span class="muted" style="font-weight:400;font-size:.8rem">your clips</span></h1>
+
+  <div id="gallery" class="grid"><p class="muted">loading…</p></div>
+
+  <details>
+    <summary>Pipeline status</summary>
+    <div id="status"></div>
+  </details>
+</div>
+
+<dialog id="player"><div style="text-align:right;margin-bottom:.4rem">
+  <button onclick="document.getElementById('player').close()"
+          style="background:none;border:none;color:#8b93a1;font-size:1rem;cursor:pointer">✕ close</button>
+</div><video controls autoplay id="pv"></video>
+<p class="muted" id="pcap" style="margin:.6rem 0 0"></p></dialog>
+
 <script>
 async function load() {
-  const res = await fetch('/api/streams');
-  const data = await res.json();
-  const el = document.getElementById('app');
-  if (!data.length) {
-    el.innerHTML = '<p class="muted">No streams yet. Run <code>cf detect &lt;channel&gt;</code>.</p>';
-    return;
+  const g = document.getElementById('gallery');
+  try {
+    const clips = await (await fetch('/api/clips')).json();
+    if (!clips.length) {
+      g.outerHTML = '<div class="empty">No clips yet.<br>Run <code>cf detect &lt;channel&gt;</code>'
+        + ' and ask your agent to clip a stream.<br>Then refresh.</div>';
+    } else {
+      g.innerHTML = clips.map(c => `
+        <div class="card" onclick="play('${c.src}','${esc(c.title)} · ${c.duration_sec}s · ${c.layout}')">
+          <div class="poster ${c.layout === 'passthrough' ? 'wide' : ''}">
+            ${c.poster ? `<img loading="lazy" src="${c.poster}" alt="">`
+                       : '<span class="muted">no preview</span>'}
+            <span class="badge">${c.layout === 'vertical-split' ? 'shorts' : c.layout}</span>
+            <span class="dur">${Math.round(c.duration_sec)}s</span>
+          </div>
+          <div class="meta">
+            <p class="clip-title">${esc(c.title)}</p>
+            <span class="sub">${esc(c.stream_title).slice(0, 40)}</span>
+          </div>
+        </div>`).join('');
+    }
+    const st = await (await fetch('/api/status')).json();
+    document.getElementById('status').innerHTML = st.map(s =>
+      `<div class="status-row"><span class="pill">${s.status}</span>
+       <strong>${esc(s.title)}</strong>
+       <span class="muted">${s.video_id}</span></div>`).join('')
+      || '<p class="muted">nothing tracked yet</p>';
+  } catch (e) {
+    g.innerHTML = '<div class="empty">failed to load — is the server running from the project folder?</div>';
   }
-  el.innerHTML = data.map(s => `
-    <div class="stream">
-      <div><strong>${esc(s.title)}</strong>
-        <span class="status">${s.status}</span></div>
-      <div class="muted">${s.video_id} · ${new Date(s.first_seen_at).toLocaleString()}</div>
-      ${renderClips(s)}
-    </div>`).join('');
 }
-
-function renderClips(s) {
-  if (!s.clips.length) return '<p class="muted">no clips rendered yet</p>';
-  const cards = s.clips.filter(c => c.playable).map(c => {
-    const src = '/files/' + encodeURIComponent(c.output_path.replaceAll('\\', '/'));
-    const wide = c.layout === 'passthrough';
-    const secs = Math.round(c.end_sec - c.start_sec);
-    return `<div>
-      <video controls preload="metadata" class="${wide ? 'wide' : ''}" src="${src}"></video>
-      <div class="clip-title">${esc(c.title || '(untitled)')}</div>
-      <span class="muted">${c.layout} · ${secs}s · ${c.status}</span>
-    </div>`;
-  }).join('');
-  return cards ? `<div class="clips">${cards}</div>` : '<p class="muted">no clips rendered yet</p>';
+function play(src, caption) {
+  const d = document.getElementById('player');
+  document.getElementById('pv').src = src;
+  document.getElementById('pcap').textContent = caption;
+  d.showModal();
 }
-
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, m =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
