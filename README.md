@@ -21,10 +21,22 @@ person who decides where to cut. You just say:
 
 ---
 
-## Setup — one command
+## Setup — one line
 
-Pick the line for your computer, run it, done. It installs **everything**:
-uv, Python, FFmpeg, Clipper-Flash, and the skill for your AI helper.
+Open a terminal, type this, press Enter:
+
+```bash
+npx clipper-flash
+```
+
+That's it. It installs **everything** — uv, Python, FFmpeg, Clipper-Flash,
+and the skill for your AI helper — then checks itself with green checkmarks.
+No other steps. When it finishes, go to Claude Code or Codex and say:
+
+> "Check my channel and clip anything new."
+
+<details>
+<summary><strong>No npm?</strong> Use one of these instead (click to expand)</summary>
 
 **Windows** (PowerShell):
 
@@ -38,14 +50,7 @@ powershell -c "irm https://raw.githubusercontent.com/tahacore/Clipper-Flash/main
 curl -fsSL https://raw.githubusercontent.com/tahacore/Clipper-Flash/main/install.sh | bash
 ```
 
-**Already have npm?** (you do if you use Claude Code or Codex CLI)
-
-```bash
-npx clipper-flash
-```
-
-When it finishes you'll see all-green checkmarks from `cf doctor`. If anything
-says FAIL, see [Problems?](#problems) below.
+</details>
 
 <details>
 <summary><strong>Prefer to do it manually?</strong> (click to expand)</summary>
