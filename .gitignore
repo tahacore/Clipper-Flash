@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Tooling
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Clipper-Flash working data (never commit user media/state)
+work/
+output/
+*.db
+*.sqlite3
+
+# Local env & secrets
+.env
+credentials/
+oauth_tokens/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
