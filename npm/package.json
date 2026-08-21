@@ -1,6 +1,6 @@
 {
   "name": "clipper-flash",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "One-command installer for Clipper-Flash: turn YouTube livestreams into Shorts with your AI coding agent (Claude Code / Codex). Sets up everything: Python, FFmpeg, the cf toolkit, and the agent skill.",
   "license": "MIT",
   "bin": {
@@ -9,9 +9,6 @@
   "files": [
     "bin"
   ],
-  "scripts": {
-    "postinstall": "node bin/install.js || true"
-  },
   "engines": {
     "node": ">=18"
   },

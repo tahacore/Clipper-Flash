@@ -9,15 +9,26 @@ const path = require("path");
 const REF = process.env.CLIPPER_FLASH_REF || "main";
 const RAW_BASE = `https://raw.githubusercontent.com/tahacore/Clipper-Flash/${REF}`;
 
+// NOTE: never call process.exit() while async I/O may be pending - it can
+// trip libuv assertion crashes on Windows. Set process.exitCode instead.
 function fail(msg) {
-  console.error(`\n  !! ${msg}`);
-  process.exit(1);
+  console.error(`\n  !! ${msg}\n`);
+  process.exitCode = 1;
 }
 
 async function fetchScript(name) {
   const url = `${RAW_BASE}/${name}`;
-  const res = await fetch(url);
-  if (!res.ok) fail(`could not download installer (${res.status} from ${url})`);
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    fail(`network error fetching installer: ${e.message}`);
+    return null;
+  }
+  if (!res.ok) {
+    fail(`could not download installer (${res.status} from ${url})`);
+    return null;
+  }
   return res.text();
 }
 
@@ -26,25 +37,27 @@ async function main() {
   console.log("  This sets up everything: uv, Python, FFmpeg, the cf toolkit,");
   console.log("  and installs the skill for Claude Code / Codex.\n");
 
-  const tmp = path.join(os.tmpdir(), `clipper-flash-install-${Date.now()}`);
+  const name = process.platform === "win32" ? "install.ps1" : "install.sh";
+  const script = await fetchScript(name);
+  if (script === null) return;
 
-  if (process.platform === "win32") {
-    const script = await fetchScript("install.ps1");
-    const file = `${tmp}.ps1`;
-    fs.writeFileSync(file, script);
-    const r = spawnSync(
-      "powershell",
-      ["-ExecutionPolicy", "Bypass", "-NoProfile", "-File", file],
-      { stdio: "inherit" }
-    );
-    if (r.status !== 0) fail("installer failed - see output above");
-  } else {
-    const script = await fetchScript("install.sh");
-    const file = `${tmp}.sh`;
-    fs.writeFileSync(file, script);
-    fs.chmodSync(file, 0o755);
-    const r = spawnSync("bash", [file], { stdio: "inherit" });
-    if (r.status !== 0) fail("installer failed - see output above");
+  const tmp = path.join(os.tmpdir(), `clipper-flash-install-${Date.now()}`);
+  const file = process.platform === "win32" ? `${tmp}.ps1` : `${tmp}.sh`;
+  fs.writeFileSync(file, script);
+  if (process.platform !== "win32") fs.chmodSync(file, 0o755);
+
+  const cmd =
+    process.platform === "win32"
+      ? spawnSync("powershell", ["-ExecutionPolicy", "Bypass", "-NoProfile", "-File", file], { stdio: "inherit" })
+      : spawnSync("bash", [file], { stdio: "inherit" });
+
+  if (cmd.error) {
+    fail(`could not launch installer: ${cmd.error.message}`);
+    return;
+  }
+  if (cmd.status !== 0) {
+    fail(`installer failed - see output above`);
+    return;
   }
 
   console.log("\n  Next: open Claude Code or Codex and say:");
