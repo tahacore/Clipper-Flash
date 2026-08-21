@@ -15,7 +15,9 @@ Spec file schema (what the agent writes after picking moments):
       "transcript": "work/t.json",   # transcript json (absolute-time words)
       "abs_start": 4980.0,           # absolute stream time of input's t=0
       "facecam": {"x":..,"y":..,"w":..,"h":..},  # optional px box in source
-      "strip_height": 640            # vertical-split only
+      "strip_height": 640,           # vertical-split only
+      "caption_margin_v": 700        # optional; vertical-split auto-places
+                                     # captions above the strip by default
     }
   ]
 }
@@ -110,6 +112,10 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
 
     cap_setting = clip.get("captions", False)
     cap_style = cap_setting if isinstance(cap_setting, str) else ("bold" if cap_setting else None)
+    cap_margin = clip.get("caption_margin_v")
+    if cap_margin is None and layout_name == "vertical-split":
+        # Default: sit just ABOVE the facecam strip instead of covering it.
+        cap_margin = int(clip.get("strip_height", 640)) + 24
     ass_path: Path | None = None
     if cap_style and clip.get("transcript"):
         t_path = Path(clip["transcript"])
@@ -125,6 +131,7 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
             width=canvas.width,
             height=canvas.height,
             style=cap_style,
+            margin_v_override=int(cap_margin) if cap_margin is not None else None,
         )
 
     out_path = Path(clip["out"])

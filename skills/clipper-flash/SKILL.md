@@ -92,8 +92,14 @@ cf facecam work/<video_id>__<start>-<end>.mp4 --json
 ```
 
 Use the first pulled section. Pass the returned box into every spec clip of
-that stream. If it fails (exit 2), omit `facecam` — vertical-split assumes a
-bottom-right cam.
+that stream. If it fails (exit 2 = no stable region found), do NOT just fall
+back to the default bottom-right assumption - the cam may be in any corner:
+
+1. Extract one clear frame:
+   `ffmpeg -ss <mid-clip-time> -i work/<section>.mp4 -frames:v 1 work/frame.png`
+2. Read the image yourself and locate the facecam overlay.
+3. Measure its pixel box (x, y, w, h) in the source frame and pass that as
+   `facecam` in the spec. Note the corner you observed; mention it to the user.
 
 ## 6. Write the spec & render
 

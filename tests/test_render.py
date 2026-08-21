@@ -74,6 +74,67 @@ def test_render_clip_with_captions_generates_ass(tmp_path, monkeypatch):
     assert "w0 w1 w2" in content
 
 
+def make_words(n):
+    return [
+        {"start": float(i) * 0.5, "end": float(i) * 0.5 + 0.4, "text": f"w{i}"}
+        for i in range(n)
+    ]
+
+
+def test_vertical_split_captions_auto_sit_above_strip(tmp_path, monkeypatch):
+    monkeypatch.setattr(render, "probe", fake_probe)
+    monkeypatch.setattr(
+        render.subprocess,
+        "run",
+        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="", stderr=""),
+    )
+    tpath = tmp_path / "t.json"
+    tpath.write_text(json.dumps({"words": make_words(6)}), encoding="utf-8")
+    (tmp_path / "in.mp4").write_bytes(b"x")
+
+    spec_clip = {
+        "input": str(tmp_path / "in.mp4"),
+        "out": str(tmp_path / "clip.mp4"),
+        "layout": "vertical-split",
+        "start": 0.0,
+        "end": 5.0,
+        "captions": True,
+        "transcript": str(tpath),
+        "abs_start": 0.0,
+    }
+    render.render_clip(spec_clip, workdir=tmp_path)
+    style_line = Path(spec_clip["out"]).with_suffix(".ass").read_text(encoding="utf-8")
+    # default strip 640 -> MarginV 664 (just above the cam strip)
+    assert ",664,1" in style_line
+
+
+def test_caption_margin_v_override_wins(tmp_path, monkeypatch):
+    monkeypatch.setattr(render, "probe", fake_probe)
+    monkeypatch.setattr(
+        render.subprocess,
+        "run",
+        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="", stderr=""),
+    )
+    tpath = tmp_path / "t.json"
+    tpath.write_text(json.dumps({"words": make_words(6)}), encoding="utf-8")
+    (tmp_path / "in.mp4").write_bytes(b"x")
+
+    spec_clip = {
+        "input": str(tmp_path / "in.mp4"),
+        "out": str(tmp_path / "clip.mp4"),
+        "layout": "vertical-split",
+        "start": 0.0,
+        "end": 5.0,
+        "captions": True,
+        "transcript": str(tpath),
+        "abs_start": 0.0,
+        "caption_margin_v": 700,
+    }
+    render.render_clip(spec_clip, workdir=tmp_path)
+    style_line = Path(spec_clip["out"]).with_suffix(".ass").read_text(encoding="utf-8")
+    assert ",700,1" in style_line
+
+
 def test_render_rejects_unknown_layout(tmp_path, monkeypatch):
     monkeypatch.setattr(render, "probe", fake_probe)
     (tmp_path / "in.mp4").write_bytes(b"x")
