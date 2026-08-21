@@ -1,0 +1,16 @@
+services:
+  gallery:
+    image: python:3.12-slim
+    working_dir: /app
+    command: sh -c "pip install --no-cache-dir '/app[vision,web]' && cf serve --host 0.0.0.0"
+    volumes:
+      - ./:/app
+      - clipper-state:/root/.clipper-flash
+      - ./output:/app/output
+    ports:
+      - "8600:8600"
+    environment:
+      - HOME=/root
+
+volumes:
+  clipper-state:
