@@ -140,17 +140,18 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
     out_path = Path(clip["out"])
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    video_chain = chain
+    # One sequential chain consumes [vpre]: fades -> (captions) -> pixfmt.
+    # Never fork [vpre] into parallel branches - a label can feed only one
+    # consumer, and the fork silently drops whichever branch loses.
+    post: list[str] = []
     polish = clip.get("polish", True)
     dur = end - start
     if polish:
-        video_chain += (
-            f";[vpre]fade=t=in:st=0:d=0.15,fade=t=out:st={max(dur - 0.25, 0):.3f}:d=0.25"
-        )
+        post.append(f"fade=t=in:st=0:d=0.15,fade=t=out:st={max(dur - 0.25, 0):.3f}:d=0.25")
     if ass_path:
-        video_chain += f";[vpre]{_ass_filter_arg(ass_path)},format=yuv420p[vout]"
-    else:
-        video_chain += ";[vpre]format=yuv420p[vout]"
+        post.append(f"{_ass_filter_arg(ass_path)}")
+    post.append("format=yuv420p")
+    video_chain = f"{chain};[vpre]" + ",".join(post) + "[vout]"
 
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",

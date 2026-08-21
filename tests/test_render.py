@@ -140,6 +140,49 @@ def test_caption_margin_v_override_wins(tmp_path, monkeypatch):
     assert ",700,1" in style_line
 
 
+def test_filtergraph_never_forks_vpre(tmp_path, monkeypatch):
+    """Regression: polish + captions used to emit two '[vpre]...' branches.
+
+    A filtergraph label may feed only one consumer; the fork made ffmpeg
+    fail (or silently drop a branch). Both post-filters must live on one
+    sequential chain: fades -> ass -> format.
+    """
+    monkeypatch.setattr(render, "probe", fake_probe)
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        if "libx264" in cmd:
+            captured["cmd"] = cmd
+            Path(cmd[-1]).write_bytes(b"fake")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(render.subprocess, "run", fake_run)
+    tpath = tmp_path / "t.json"
+    tpath.write_text(json.dumps({"words": make_words(6)}), encoding="utf-8")
+    (tmp_path / "in.mp4").write_bytes(b"x")
+
+    spec_clip = {
+        "input": str(tmp_path / "in.mp4"),
+        "out": str(tmp_path / "clip.mp4"),
+        "layout": "vertical-split",
+        "start": 0.0,
+        "end": 5.0,
+        "captions": True,
+        "transcript": str(tpath),
+        "abs_start": 0.0,
+    }
+    render.render_clip(spec_clip, workdir=tmp_path)
+
+    graph = captured["cmd"][captured["cmd"].index("-filter_complex") + 1]
+    # producer + exactly one consumer
+    assert graph.count("[vpre]") == 2
+    assert graph.count("[vout]") == 1
+    fade_at = graph.index("fade=t=in")
+    ass_at = graph.index("ass=")
+    fmt_at = graph.index("format=yuv420p")
+    assert fade_at < ass_at < fmt_at
+
+
 def test_render_rejects_unknown_layout(tmp_path, monkeypatch):
     monkeypatch.setattr(render, "probe", fake_probe)
     (tmp_path / "in.mp4").write_bytes(b"x")
