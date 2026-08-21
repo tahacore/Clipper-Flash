@@ -105,6 +105,15 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_clips_stream ON clips(stream_video_id);
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT NOT NULL DEFAULT '',
+            video_id TEXT NOT NULL DEFAULT '',
+            kind TEXT NOT NULL,              -- stream_summary | clip_note | note
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_memories_channel ON memories(channel_id);
         """
     )
     row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
@@ -272,3 +281,54 @@ def stream_summary(conn: sqlite3.Connection, stream: Stream) -> dict:
     d = asdict(stream)
     d["clips"] = clips
     return d
+
+
+# --- memory ------------------------------------------------------------------
+
+MEMORY_KINDS = ("stream_summary", "clip_note", "note")
+
+
+def add_memory(
+    conn: sqlite3.Connection,
+    kind: str,
+    text: str,
+    channel_id: str = "",
+    video_id: str = "",
+) -> int:
+    if kind not in MEMORY_KINDS:
+        raise ValueError(f"unknown memory kind: {kind} (use {MEMORY_KINDS})")
+    text = text.strip()
+    if not text:
+        raise ValueError("memory text must not be empty")
+    cur = conn.execute(
+        "INSERT INTO memories (channel_id, video_id, kind, text, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (channel_id, video_id, kind, text, utcnow()),
+    )
+    conn.commit()
+    assert cur.lastrowid is not None
+    return cur.lastrowid
+
+
+def list_memories(
+    conn: sqlite3.Connection,
+    channel_id: str | None = None,
+    kind: str | None = None,
+    limit: int = 200,
+) -> list[sqlite3.Row]:
+    q = "SELECT * FROM memories WHERE 1=1"
+    args: list = []
+    if channel_id:
+        q += " AND channel_id=?"
+        args.append(channel_id)
+    if kind:
+        q += " AND kind=?"
+        args.append(kind)
+    q += " ORDER BY created_at DESC LIMIT ?"
+    args.append(limit)
+    return conn.execute(q, args).fetchall()
+
+
+def delete_memory(conn: sqlite3.Connection, memory_id: int) -> None:
+    conn.execute("DELETE FROM memories WHERE id=?", (memory_id,))
+    conn.commit()

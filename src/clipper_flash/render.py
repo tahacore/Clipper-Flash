@@ -46,6 +46,7 @@ class RenderResult:
     height: int
     duration_sec: float
     captions: bool
+    poster: str | None = None
 
 
 def probe(path: str | Path) -> dict:
@@ -111,11 +112,12 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
     )
 
     cap_setting = clip.get("captions", False)
-    cap_style = cap_setting if isinstance(cap_setting, str) else ("bold" if cap_setting else None)
+    cap_style = cap_setting if isinstance(cap_setting, str) else ("clean" if cap_setting else None)
     cap_margin = clip.get("caption_margin_v")
     if cap_margin is None and layout_name == "vertical-split":
         # Default: sit just ABOVE the facecam strip instead of covering it.
         cap_margin = int(clip.get("strip_height", 640)) + 24
+    emphasis = [str(e) for e in clip.get("emphasis", [])]
     ass_path: Path | None = None
     if cap_style and clip.get("transcript"):
         t_path = Path(clip["transcript"])
@@ -131,7 +133,8 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
             width=canvas.width,
             height=canvas.height,
             style=cap_style,
-            margin_v_override=int(cap_margin) if cap_margin is not None else None,
+            margin_v_override=cap_margin,
+            emphasis=emphasis,
         )
 
     out_path = Path(clip["out"])
@@ -172,6 +175,8 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
     if proc.returncode != 0:
         raise RenderError(f"ffmpeg failed:\n{proc.stderr[-2000:]}")
 
+    poster = _extract_poster(out_path, dur)
+
     return RenderResult(
         out=str(out_path),
         layout=layout_name,
@@ -179,7 +184,25 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
         height=canvas.height,
         duration_sec=round(end - start, 2),
         captions=bool(ass_path),
+        poster=poster,
     )
+
+
+def _extract_poster(out_path: Path, duration: float) -> str | None:
+    """Grab a frame at ~30% in as the gallery poster (<clip>.poster.jpg)."""
+    try:
+        poster = out_path.with_name(out_path.stem + ".poster.jpg")
+        cmd = [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-ss", f"{max(duration * 0.3, 0.5):.3f}", "-i", str(out_path),
+            "-frames:v", "1", "-q:v", "3", str(poster),
+        ]
+        subprocess.run(cmd, capture_output=True, text=True)
+        if poster.exists() and poster.stat().st_size > 0:
+            return str(poster)
+    except Exception:  # noqa: BLE001 - posters are best-effort
+        pass
+    return None
 
 
 def render_spec_file(spec_path: str | Path) -> list[RenderResult]:

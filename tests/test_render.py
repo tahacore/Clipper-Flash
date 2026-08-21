@@ -16,9 +16,11 @@ def test_render_clip_builds_expected_ffmpeg_call(tmp_path, monkeypatch):
     captured = {}
 
     def fake_run(cmd, **kwargs):
-        captured["cmd"] = cmd
-        out = Path(cmd[-1])
-        out.write_bytes(b"fake")  # pretend success
+        # render + poster both invoke ffmpeg; keep them distinguishable
+        if "libx264" in cmd:
+            captured["cmd"] = cmd
+            out = Path(cmd[-1])
+            out.write_bytes(b"fake")  # pretend success
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(render.subprocess, "run", fake_run)

@@ -336,7 +336,7 @@ def render(
 
     payload = [
         {"out": r.out, "layout": r.layout, "size": f"{r.width}x{r.height}",
-         "duration_sec": r.duration_sec, "captions": r.captions}
+         "duration_sec": r.duration_sec, "captions": r.captions, "poster": r.poster}
         for r in results
     ]
     if as_json:
@@ -514,6 +514,116 @@ def serve(
         _fail("web extras missing - install with: uv tool install 'clipper-flash[web]'")
     typer.echo(f"gallery: http://{host}:{port}  (ctrl-c to stop)")
     uvicorn.run(server.app, host=host, port=port, log_level="warning")
+
+
+@app.command(name="clear")
+def clear_cmd(
+    skipped_only: bool = typer.Option(False, "--skipped", help="Remove only skipped streams."),
+    all_streams: bool = typer.Option(
+        False, "--all", help="Remove ALL tracked data (streams+clips)."
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Purge tracked streams/clips from local state."""
+    conn = state.connect()
+    if not any([skipped_only, all_streams]):
+        _fail("choose --skipped or --all (nothing done)")
+    if not yes and not as_json:
+        scope = "ALL streams and clips" if all_streams else "skipped streams"
+        if not typer.confirm(f"Delete {scope} from state?"):
+            raise typer.Abort()
+
+    if all_streams:
+        n_clips = conn.execute("SELECT COUNT(*) FROM clips").fetchone()[0]
+        n_streams = conn.execute("SELECT COUNT(*) FROM streams").fetchone()[0]
+        conn.execute("DELETE FROM clips")
+        conn.execute("DELETE FROM streams")
+    else:
+        n_clips = conn.execute(
+            "SELECT COUNT(*) FROM clips WHERE stream_video_id IN "
+            "(SELECT video_id FROM streams WHERE status='skipped')"
+        ).fetchone()[0]
+        n_streams = conn.execute(
+            "SELECT COUNT(*) FROM streams WHERE status='skipped'"
+        ).fetchone()[0]
+        conn.execute(
+            "DELETE FROM clips WHERE stream_video_id IN "
+            "(SELECT video_id FROM streams WHERE status='skipped')"
+        )
+        conn.execute("DELETE FROM streams WHERE status='skipped'")
+    conn.commit()
+    if as_json:
+        _echo_json({"removed_streams": n_streams, "removed_clips": n_clips})
+        return
+    typer.echo(f"removed {n_streams} streams, {n_clips} clips")
+
+
+# --- memory ------------------------------------------------------------------
+
+
+memory_app = typer.Typer(
+    name="memory", help="Channel memory: topics, stories, past clips.", no_args_is_help=True
+)
+app.add_typer(memory_app)
+
+
+@memory_app.command(name="add")
+def memory_add_cmd(
+    text: str = typer.Argument(..., help="What to remember (summary, story note, clip note)."),
+    kind: str = typer.Option("note", "--kind", help="stream_summary | clip_note | note."),
+    video_id: str = typer.Option("", "--video-id", help="Associate with a video."),
+    channel_id: str = typer.Option("", "--channel-id", help="Associate with a channel."),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Write something to channel memory."""
+    try:
+        mid = state.add_memory(
+            state.connect(), kind, text, channel_id=channel_id, video_id=video_id
+        )
+    except ValueError as exc:
+        _fail(str(exc))
+    if as_json:
+        _echo_json({"id": mid})
+        return
+    typer.echo(f"remembered #{mid}")
+
+
+@memory_app.command(name="list")
+def memory_list_cmd(
+    channel_id: str = typer.Option(None, "--channel-id", help="Filter by channel."),
+    kind: str = typer.Option(None, "--kind", help="Filter by kind."),
+    limit: int = typer.Option(50, "--limit", help="Max entries."),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Recall channel memory (newest first)."""
+    rows = state.list_memories(state.connect(), channel_id=channel_id, kind=kind, limit=limit)
+    items = [
+        {"id": r["id"], "kind": r["kind"], "video_id": r["video_id"],
+         "created_at": r["created_at"], "text": r["text"]}
+        for r in rows
+    ]
+    if as_json:
+        _echo_json(items)
+        return
+    if not items:
+        typer.echo("memory is empty")
+        return
+    for it in items:
+        typer.echo(f"#{it['id']} [{it['kind']}] {it['created_at']} {it['text'][:110]}")
+
+
+@memory_app.command(name="delete")
+def memory_delete_cmd(
+    memory_id: int = typer.Argument(..., help="Memory id to delete."),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Delete one memory entry."""
+    state.delete_memory(state.connect(), memory_id)
+    if as_json:
+        _echo_json({"deleted": memory_id})
+        return
+    typer.echo(f"deleted #{memory_id}")
 
 
 def _stream_dict(s: state.Stream) -> dict[str, t.Any]:
