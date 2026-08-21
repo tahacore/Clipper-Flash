@@ -1,8 +1,11 @@
 # Connecting your agent
 
-Clipper-Flash ships as a **skill**: a workflow document your coding agent reads
-so it drives the `cf` toolkit like an experienced editor would. Install takes
-one minute.
+**The easy way:** run `cf install-skill` (the one-command installer does this
+automatically). It copies the skill into Claude Code's skills folder and adds
+a marked block to Codex's `AGENTS.md`. Re-run it any time after updating
+Clipper-Flash.
+
+Manual options below if you prefer.
 
 ## Claude Code (CLI or desktop)
 

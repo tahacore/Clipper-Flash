@@ -21,87 +21,42 @@ person who decides where to cut. You just say:
 
 ---
 
-## What you need (3 things)
+## Setup — one command
 
-| Thing | What it is | Where to get it |
-|---|---|---|
-| **Python 3.11 or 3.12** | A free program that runs tools like this one | [python.org/downloads](https://www.python.org/downloads/) |
-| **FFmpeg** | A free video tool that does the actual cutting | See Step 1 below |
-| **uv** | A small installer helper for Python tools | See Step 2 below |
+Pick the line for your computer, run it, done. It installs **everything**:
+uv, Python, FFmpeg, Clipper-Flash, and the skill for your AI helper.
 
-And of course: a YouTube channel with livestreams, plus Claude Code or Codex.
+**Windows** (PowerShell):
 
----
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/tahacore/Clipper-Flash/main/install.ps1 | iex"
+```
 
-## Setup (one time, about 5 minutes)
-
-### Step 1: Install FFmpeg
-
-Open your terminal (on Windows: press Start, type `powershell`, press Enter)
-and run the line for your computer:
+**Mac / Linux:**
 
 ```bash
-# Windows
-winget install Gyan.FFmpeg
-
-# Mac (needs Homebrew)
-brew install ffmpeg
-
-# Linux (Ubuntu/Debian)
-sudo apt install ffmpeg
+curl -fsSL https://raw.githubusercontent.com/tahacore/Clipper-Flash/main/install.sh | bash
 ```
 
-Close and reopen the terminal after this.
-
-### Step 2: Install uv
+**Already have npm?** (you do if you use Claude Code or Codex CLI)
 
 ```bash
-# Windows (PowerShell)
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Mac / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
+npx clipper-flash
 ```
 
-Close and reopen the terminal again.
+When it finishes you'll see all-green checkmarks from `cf doctor`. If anything
+says FAIL, see [Problems?](#problems) below.
 
-### Step 3: Install Clipper-Flash
+<details>
+<summary><strong>Prefer to do it manually?</strong> (click to expand)</summary>
 
-```bash
-uv tool install "clipper-flash[vision,web] @ git+https://github.com/tahacore/Clipper-Flash"
-```
+1. Install [FFmpeg](https://ffmpeg.org/download.html) — Windows: `winget install Gyan.FFmpeg`
+2. Install [uv](https://docs.astral.sh/uv/) — Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
+3. `uv tool install "clipper-flash[vision,web] @ git+https://github.com/tahacore/Clipper-Flash"`
+4. `cf install-skill` ← copies the skill into Claude Code / Codex for you
+5. `cf doctor` to verify
 
-### Step 4: Check everything works
-
-Type:
-
-```bash
-cf doctor
-```
-
-You want to see the word **OK** next to every line, like this:
-
-```
-OK   ffmpeg          on PATH
-OK   ffprobe         on PATH
-OK   yt-dlp          python package v...
-OK   vision extras   mediapipe + opencv available
-OK   state db        ... (0 streams)
-```
-
-If something says FAIL, see [Problems?](#problems) at the bottom.
-
----
-
-## Connect your AI helper (one time)
-
-Your AI helper needs to learn the workflow. Full instructions with pictures of
-every step are in **[docs/INSTALL-SKILLS.md](docs/INSTALL-SKILLS.md)**.
-
-Short version:
-
-- **Claude Code:** copy the `skills/clipper-flash` folder into `~/.claude/skills/`
-- **Codex:** open the cloned Clipper-Flash folder in Codex (it reads `AGENTS.md` by itself)
+</details>
 
 ---
 
@@ -153,7 +108,7 @@ This uses your own Google account, so nobody else is involved.
    Rename it to `client_secret.json`.
 4. Install the upload add-on:
    ```bash
-   uv tool install "clipper-flash[upload] @ git+https://github.com/tahacore/Clipper-Flash"
+   uv tool install "clipper-flash[upload] @ git+https://github.com/tahacore/Clipper-Flash" --force
    ```
 5. Upload a clip:
    ```bash
