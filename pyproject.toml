@@ -29,6 +29,10 @@ vision = [
     "opencv-python-headless>=4.9",
     "numpy>=1.26,<3",
 ]
+upload = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.1",
+]
 
 [project.scripts]
 cf = "clipper_flash.cli:main"

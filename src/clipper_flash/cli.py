@@ -321,6 +321,40 @@ def render(
         typer.echo(f"rendered [{p['layout']}] {p['size']} {p['duration_sec']}s -> {p['out']}")
 
 
+# --- upload ------------------------------------------------------------------
+
+
+@app.command()
+def upload(
+    file: Path = typer.Argument(..., help="Finished mp4 to upload."),
+    title: str = typer.Option(..., "--title", help="Video title (<=100 chars)."),
+    description: str = typer.Option("", "--desc", help="Video description."),
+    privacy: str = typer.Option("unlisted", "--privacy", help="public | unlisted | private."),
+    tags: str = typer.Option("", "--tags", help="Comma-separated tags."),
+    client_secret: Path = typer.Option(
+        Path("client_secret.json"), "--client-secret", help="OAuth desktop client secret JSON."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Upload a finished clip to YouTube (requires [upload] extra + OAuth setup)."""
+    from clipper_flash.upload import UploadError, upload_video
+
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    try:
+        result = upload_video(
+            file, title, description, privacy=privacy, tags=tag_list,
+            client_secret=client_secret,
+        )
+    except UploadError as exc:
+        _fail(str(exc))
+    except Exception as exc:  # noqa: BLE001
+        _fail(f"upload failed: {exc}")
+    if as_json:
+        _echo_json({"video_id": result.video_id, "url": result.url, "privacy": result.privacy})
+        return
+    typer.echo(f"uploaded ({result.privacy}): {result.url}")
+
+
 def _stream_dict(s: state.Stream) -> dict[str, t.Any]:
     return {
         "video_id": s.video_id,
