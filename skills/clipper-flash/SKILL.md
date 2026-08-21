@@ -48,7 +48,18 @@ cf transcript <url> -o work/<video_id>.transcript.json --json
   For an 8h stream expect ~5k segments (~100k tokens) — read all of them;
   long context is exactly what you're good at.
 
-## 3. Pick highlights (your main job)
+## 3. Recall memory (before picking)
+
+```
+cf memory list --json
+```
+
+Check for: stories already clipped ("Thailand story - Oct 3"), recurring
+segments, preferred caption styles. **Never re-clip a story that's already
+been made into a clip.** If the channel has history, mention 1-2 relevant
+recalls to the user ("skipping the van story - already clipped on Oct 3").
+
+## 4. Pick highlights (your main job)
 
 Select the best **3–8 self-contained moments**, each **30–90 seconds**
 (Shorts sweet spot: 45–70s). Score each candidate segment window on:
@@ -77,7 +88,7 @@ a spoken-language `title` (≤60 chars, no clickbait clichés), and a one-line
 Present your picks to the user (title + timestamp range + reason) and get a
 confirm unless they pre-approved auto mode.
 
-## 4. Download only the chosen sections
+## 5. Download only the chosen sections
 
 ```
 cf pull section <url> <start> <end> -o work/<video_id>__<start>-<end>.mp4
@@ -85,7 +96,7 @@ cf pull section <url> <start> <end> -o work/<video_id>__<start>-<end>.mp4
 
 (one call per clip; cuts are keyframe-exact, so file t=0 == requested start)
 
-## 5. Facecam (for vertical layouts)
+## 6. Facecam (for vertical layouts)
 
 ```
 cf facecam work/<video_id>__<start>-<end>.mp4 --json
@@ -101,7 +112,7 @@ back to the default bottom-right assumption - the cam may be in any corner:
 3. Measure its pixel box (x, y, w, h) in the source frame and pass that as
    `facecam` in the spec. Note the corner you observed; mention it to the user.
 
-## 6. Write the spec & render
+## 7. Write the spec & render
 
 `work/<video_id>.spec.json`:
 
@@ -114,7 +125,8 @@ back to the default bottom-right assumption - the cam may be in any corner:
       "title":  "<your title>",
       "layout": "vertical-split",
       "start": 0.0, "end": 60.0,
-      "captions": true,
+      "captions": "hype",
+      "emphasis": ["never", "$10K"],
       "transcript": "work/<video_id>.transcript.json",
       "abs_start": 4980.0,
       "facecam": {"x": 1490, "y": 793, "w": 422, "h": 237}
@@ -122,6 +134,17 @@ back to the default bottom-right assumption - the cam may be in any corner:
   ]
 }
 ```
+
+**Caption styles** (`captions` key): `hype` (big font, yellow word-pop -
+default for Shorts), `clean` (word-pop, lighter), `bold-box` (text on dark
+pill), `karaoke-fill` (color sweep), `minimal` (static small - best for
+dense screen content), `bold` (legacy static). Word-by-word reveal is
+automatic for hype/clean/bold-box.
+
+**Emphasis words**: you read the transcript - so pick the 2-5 words per clip
+that CARRY the moment ("never", "$10K", "wrong"). They get permanent golden
+highlight in every frame they appear. This is your typographic judgment;
+the renderer just executes it.
 
 Layouts: `vertical-split` (screen top + facecam strip below — default for
 coding/dev streams), `face-crop` (talking-head), `passthrough` (16:9 long-form;
@@ -131,14 +154,25 @@ use `start`/`end` relative to input, captions still supported).
 cf render work/<video_id>.spec.json --video-id <video_id> --json
 ```
 
-## 7. Verify (never skip)
+## 8. Verify (never skip)
 
 For each output file run ffprobe: duration within ±1s of requested, both
 audio+video streams present, size > 500KB. Watch for: zero-byte files,
 missing audio (no `-map 0:a?` output), stretched aspect ratio. Re-render any
 failures with adjusted bounds. Then show the user the list with paths.
 
-## 8. Optional: post to YouTube
+## 9. Remember (write back - never skip)
+
+```
+cf memory add --kind stream_summary --video-id <id> "2.5h stream: AI-gig rant(3:35), Muay Thai spa story(11:03), prompt recipe demo(16:23)..."
+cf memory add --kind clip_note --video-id <id> "Clip 'Teachers can't be individuals' - curiosity-gap title, hype style"
+```
+
+Record: topics/stories covered WITH timestamps, each clip's title + style +
+one-line outcome note. This is how the channel gets smarter every week -
+future runs read this before picking.
+
+## 10. Optional: post to YouTube
 
 If the user asks to publish and `cf upload` is configured (see README
 "Auto-upload"), upload each clip with its title plus a standard description
