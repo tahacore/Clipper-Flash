@@ -63,9 +63,13 @@ def doctor() -> None:
 
     try:
         import cv2  # noqa: F401
-        import mediapipe  # noqa: F401
 
-        checks.append(("vision extras", True, "mediapipe + opencv available"))
+        from clipper_flash.facecam import _YUNET_MODEL
+
+        if _YUNET_MODEL.exists():
+            checks.append(("vision extras", True, "opencv + yunet model"))
+        else:
+            checks.append(("vision extras", False, "yunet model missing - reinstall clipper-flash"))
     except Exception:  # noqa: BLE001
         checks.append(
             (

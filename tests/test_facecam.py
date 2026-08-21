@@ -1,6 +1,12 @@
 import pytest
 
-from clipper_flash.facecam import FacecamNotFound, find_stable_box
+from clipper_flash.facecam import (
+    FacecamNotFound,
+    detect_facecam,
+    expand_face_to_cam,
+    find_stable_box,
+    make_yunet_detector,
+)
 
 CAM = (0.70, 0.60, 0.20, 0.30)  # bottom-right facecam, normalized
 
@@ -50,3 +56,68 @@ def test_two_faces_picks_consistent_one() -> None:
     boxes = [[CAM, (0.05, 0.05, 0.15, 0.15)] for _ in range(6)]
     fc = find_stable_box(boxes, 1920, 1080)
     assert fc.x > 1000  # the corner cam wins
+
+
+def test_yunet_detector_loads_and_runs() -> None:
+    """The bundled yunet model must load and run on a blank frame."""
+    det = make_yunet_detector()
+    if det is None:
+        pytest.skip("opencv or bundled model unavailable")
+    import numpy as np
+
+    blank = np.zeros((480, 640, 3), dtype=np.uint8)
+    result = det(blank)
+    assert isinstance(result, list)  # no faces on blank - but no crash
+
+
+def tiny_video(path, frames=10, w=64, h=64) -> None:
+    """Write a real (openable) video so VideoCapture works in tests."""
+    import cv2
+    import numpy as np
+
+    vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 10, (w, h))
+    for _ in range(frames):
+        vw.write(np.zeros((h, w, 3), dtype=np.uint8))
+    vw.release()
+
+
+def test_expand_face_to_cam_window() -> None:
+    """Face box grows into a ~16:9 cam window, clamped to the frame."""
+    from clipper_flash.facecam import Facecam
+
+    face = Facecam(x=277, y=707, w=105, h=152, confidence=0.9)
+    cam = expand_face_to_cam(face, 1920, 1080)
+    # bigger than the face, roughly 16:9, inside the frame
+    assert cam.w > face.w * 2 and cam.h > face.h * 1.5
+    assert cam.w / cam.h > 1.5  # landscape-ish window
+    assert cam.x >= 0 and cam.y >= 0
+    assert cam.x + cam.w <= 1920 and cam.y + cam.h <= 1080
+    assert cam.confidence == 0.9
+
+
+def test_all_detector_errors_reported_as_broken(tmp_path) -> None:
+    """A crashing detector must say 'stack broken', not 'no faces'."""
+    video = tmp_path / "tiny.avi"
+    tiny_video(video)
+
+    def boom(frame):
+        raise RuntimeError("detector gone")
+
+    with pytest.raises(FacecamNotFound, match="vision stack is broken"):
+        detect_facecam(str(video), samples=3, detector=boom)
+
+
+def test_partial_detector_errors_still_detect(tmp_path) -> None:
+    """Some erroring frames must not kill detection if others vote."""
+    calls = {"n": 0}
+
+    def flaky(frame):
+        calls["n"] += 1
+        if calls["n"] % 2 == 0:
+            raise RuntimeError("boom")
+        return [CAM]
+
+    video = tmp_path / "tiny.avi"
+    tiny_video(video)
+    fc = detect_facecam(str(video), samples=4, detector=flaky)
+    assert fc.confidence == pytest.approx(0.5)  # half the frames voted CAM
