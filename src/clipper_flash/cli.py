@@ -82,6 +82,17 @@ def doctor() -> None:
     except Exception as exc:  # noqa: BLE001
         checks.append(("state db", False, str(exc)))
 
+    skill_src = _bundled_skill_dir()
+    claude_skill = Path.home() / ".claude" / "skills" / "clipper-flash" / "SKILL.md"
+    if claude_skill.exists():
+        checks.append(("agent skill", True, str(claude_skill)))
+    else:
+        checks.append(
+            ("agent skill", False, "not installed - run: cf install-skill")
+        )
+    if skill_src is None:
+        checks.append(("skill source", False, "SKILL.md missing from package"))
+
     ok = True
     for name, good, detail in checks:
         green = typer.style("OK  ", fg=typer.colors.GREEN)
@@ -325,6 +336,107 @@ def render(
         return
     for p in payload:
         typer.echo(f"rendered [{p['layout']}] {p['size']} {p['duration_sec']}s -> {p['out']}")
+
+
+# --- skill installation ------------------------------------------------------
+
+_SKILL_MARK_BEGIN = "<!-- CLIPPER-FLASH:BEGIN -->"
+_SKILL_MARK_END = "<!-- CLIPPER-FLASH:END -->"
+
+
+def _bundled_skill_dir() -> Path | None:
+    """Locate the packaged SKILL.md (wheel) or repo copy (dev checkout)."""
+    packaged = Path(__file__).parent / "_skills" / "clipper-flash"
+    if packaged.exists():
+        return packaged
+    candidates = [
+        Path.cwd() / "skills" / "clipper-flash",
+        Path(__file__).resolve().parents[2] / "skills" / "clipper-flash",
+    ]
+    for cand in candidates:
+        if (cand / "SKILL.md").exists():
+            return cand
+    return None
+
+
+def _codex_agents_block(skill_ref: str) -> str:
+    return (
+        f"{_SKILL_MARK_BEGIN}\n"
+        "## Clipper-Flash\n"
+        "When asked to clip, find highlights in, or repurpose YouTube "
+        "livestreams/VODs, follow the workflow in:\n"
+        f"{skill_ref}\n"
+        f"{_SKILL_MARK_END}"
+    )
+
+
+@app.command(name="install-skill")
+def install_skill_cmd(
+    claude_dir: Path = typer.Option(
+        None, "--claude-dir", help="Override Claude Code skills directory."
+    ),
+    codex_home: Path = typer.Option(None, "--codex-home", help="Override ~/.codex location."),
+    skip_codex: bool = typer.Option(False, "--skip-codex", help="Do not touch Codex config."),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Install/update the Clipper-Flash skill for Claude Code and Codex."""
+    import shutil as _shutil
+
+    src = _bundled_skill_dir()
+    if not src:
+        _fail("SKILL.md not found next to the installed package - reinstall clipper-flash")
+
+    results: dict[str, t.Any] = {}
+
+    # Claude Code personal skills
+    claude_target = claude_dir or (Path.home() / ".claude" / "skills" / "clipper-flash")
+    try:
+        claude_target.mkdir(parents=True, exist_ok=True)
+        _shutil.copy2(src / "SKILL.md", claude_target / "SKILL.md")
+        results["claude"] = {"installed": True, "path": str(claude_target / "SKILL.md")}
+    except OSError as exc:
+        results["claude"] = {"installed": False, "error": str(exc)}
+
+    # Codex global instructions (only if a codex home exists or was forced)
+    codex_base = codex_home or (Path.home() / ".codex")
+    if skip_codex:
+        results["codex"] = {"installed": False, "skipped": True}
+    elif codex_home is not None or codex_base.exists():
+        agents = codex_base / "AGENTS.md"
+        try:
+            codex_base.mkdir(parents=True, exist_ok=True)
+            existing = agents.read_text(encoding="utf-8") if agents.exists() else ""
+            block = _codex_agents_block(str(claude_target / "SKILL.md"))
+            if _SKILL_MARK_BEGIN in existing:
+                pre = existing.split(_SKILL_MARK_BEGIN)[0].rstrip("\n")
+                post = existing.split(_SKILL_MARK_END)[-1].lstrip("\n")
+                new_content = (pre + "\n\n" + block + "\n\n" + post).strip() + "\n"
+            else:
+                new_content = (existing.rstrip("\n") + "\n\n" + block + "\n").lstrip("\n")
+            agents.write_text(new_content, encoding="utf-8")
+            results["codex"] = {"installed": True, "path": str(agents)}
+        except OSError as exc:
+            results["codex"] = {"installed": False, "error": str(exc)}
+    else:
+        results["codex"] = {
+            "installed": False,
+            "skipped": True,
+            "hint": "no ~/.codex found; pass --codex-home to force",
+        }
+
+    if as_json:
+        _echo_json(results)
+        return
+    for agent, info in results.items():
+        if info.get("installed"):
+            typer.echo(f"OK   {agent:8} -> {info['path']}")
+        elif info.get("skipped"):
+            hint = f" ({info['hint']})" if info.get("hint") else ""
+            typer.echo(f"SKIP {agent:8}{hint}")
+        else:
+            typer.secho(f"FAIL {agent:8} {info.get('error')}", fg=typer.colors.RED)
+    if not (results["claude"]["installed"] or results["codex"].get("installed")):
+        _fail("could not install the skill anywhere")
 
 
 # --- upload ------------------------------------------------------------------
