@@ -83,9 +83,13 @@ def doctor() -> None:
         checks.append(("state db", False, str(exc)))
 
     skill_src = _bundled_skill_dir()
-    claude_skill = Path.home() / ".claude" / "skills" / "clipper-flash" / "SKILL.md"
-    if claude_skill.exists():
-        checks.append(("agent skill", True, str(claude_skill)))
+    skill_locations = [
+        Path.home() / ".claude" / "skills" / "clipper-flash" / "SKILL.md",
+        Path.home() / ".agents" / "skills" / "clipper-flash" / "SKILL.md",
+    ]
+    found = [p for p in skill_locations if p.exists()]
+    if found:
+        checks.append(("agent skill", True, str(found[0])))
     else:
         checks.append(
             ("agent skill", False, "not installed - run: cf install-skill")
@@ -388,6 +392,19 @@ def install_skill_cmd(
 
     results: dict[str, t.Any] = {}
 
+    # Cross-agent standard location (Codex USER scope, adopted by other agents).
+    agents_target = (
+        codex_home.parent / ".agents" / "skills" / "clipper-flash"
+        if codex_home
+        else Path.home() / ".agents" / "skills" / "clipper-flash"
+    )
+    try:
+        agents_target.mkdir(parents=True, exist_ok=True)
+        _shutil.copy2(src / "SKILL.md", agents_target / "SKILL.md")
+        results["agents"] = {"installed": True, "path": str(agents_target / "SKILL.md")}
+    except OSError as exc:
+        results["agents"] = {"installed": False, "error": str(exc)}
+
     # Claude Code personal skills
     claude_target = claude_dir or (Path.home() / ".claude" / "skills" / "clipper-flash")
     try:
@@ -435,7 +452,10 @@ def install_skill_cmd(
             typer.echo(f"SKIP {agent:8}{hint}")
         else:
             typer.secho(f"FAIL {agent:8} {info.get('error')}", fg=typer.colors.RED)
-    if not (results["claude"]["installed"] or results["codex"].get("installed")):
+    installed_anywhere = any(
+        info.get("installed") for info in results.values()
+    )
+    if not installed_anywhere:
         _fail("could not install the skill anywhere")
 
 

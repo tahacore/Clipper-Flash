@@ -32,6 +32,9 @@ def test_install_skill_to_custom_dirs(tmp_path) -> None:
     assert result.exit_code == 0, result.output
     skill_file = claude / "SKILL.md"
     assert skill_file.exists()
+    # cross-agent standard location (sibling of the codex home we passed)
+    agents_skill = tmp_path / ".agents" / "skills" / "clipper-flash" / "SKILL.md"
+    assert agents_skill.exists(), result.output
     agents = codex_home / "AGENTS.md"
     assert agents.exists()
     content = agents.read_text(encoding="utf-8")
