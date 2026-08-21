@@ -324,7 +324,7 @@ def list_memories(
     if kind:
         q += " AND kind=?"
         args.append(kind)
-    q += " ORDER BY created_at DESC LIMIT ?"
+    q += " ORDER BY created_at DESC, id DESC LIMIT ?"
     args.append(limit)
     return conn.execute(q, args).fetchall()
 

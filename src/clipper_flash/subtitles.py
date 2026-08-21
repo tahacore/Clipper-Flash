@@ -131,11 +131,13 @@ def _norm(token: str) -> str:
 def _style_word(word_text: str, st: dict, is_active: bool, is_emphasis: bool) -> str:
     """Wrap one word with inline ASS overrides. Raw text escaped, tags added."""
     t = _esc(word_text)
-    color = None
-    if is_active and st["active"] != st["primary"]:
-        color = st["active"]
-    elif is_emphasis:
+    # emphasis (agent-marked) wins over the transient active highlight
+    if is_emphasis:
         color = st["emphasis"]
+    elif is_active and st["active"] != st["primary"]:
+        color = st["active"]
+    else:
+        color = None
     if color:
         return "{\\c" + color + "&}" + t + "{\\c" + st["primary"] + "&}"
     return t
