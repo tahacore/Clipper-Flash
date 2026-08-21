@@ -355,6 +355,25 @@ def upload(
     typer.echo(f"uploaded ({result.privacy}): {result.url}")
 
 
+# --- gallery UI --------------------------------------------------------------
+
+
+@app.command()
+def serve(
+    port: int = typer.Option(8600, "--port", help="HTTP port."),
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address."),
+) -> None:
+    """Serve the clip gallery web UI."""
+    try:
+        import uvicorn
+
+        from clipper_flash import server
+    except ImportError:
+        _fail("web extras missing - install with: uv tool install 'clipper-flash[web]'")
+    typer.echo(f"gallery: http://{host}:{port}  (ctrl-c to stop)")
+    uvicorn.run(server.app, host=host, port=port, log_level="warning")
+
+
 def _stream_dict(s: state.Stream) -> dict[str, t.Any]:
     return {
         "video_id": s.video_id,

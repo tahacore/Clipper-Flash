@@ -33,6 +33,10 @@ upload = [
     "google-api-python-client>=2.100",
     "google-auth-oauthlib>=1.1",
 ]
+web = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
 
 [project.scripts]
 cf = "clipper_flash.cli:main"

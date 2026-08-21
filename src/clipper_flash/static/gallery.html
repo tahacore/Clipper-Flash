@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clipper-Flash</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; background:#0e1116; color:#e6e6e6;
+         max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; } h1 span { color:#f5c518; }
+  .muted { color:#8b93a1; font-size:.85rem; }
+  .stream { background:#161b23; border:1px solid #232a35; border-radius:12px;
+            padding:1rem 1.25rem; margin:1rem 0; }
+  .status { display:inline-block; padding:.1rem .55rem; border-radius:99px;
+            font-size:.75rem; background:#232a35; margin-left:.5rem; }
+  .clips { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+           gap:1rem; margin-top:.75rem; }
+  video { width:100%; border-radius:8px; background:#000; aspect-ratio:9/16;
+          object-fit:contain; }
+  video.wide { aspect-ratio:16/9; }
+  .clip-title { font-size:.85rem; margin:.4rem 0 .1rem; }
+  a { color:#7ab3ff; text-decoration:none; }
+</style>
+</head>
+<body>
+<h1>⚡ <span>Clipper-Flash</span></h1>
+<p class="muted">Streams tracked in state.db · clips served from output/</p>
+<div id="app"><p class="muted">loading…</p></div>
+<script>
+async function load() {
+  const res = await fetch('/api/streams');
+  const data = await res.json();
+  const el = document.getElementById('app');
+  if (!data.length) {
+    el.innerHTML = '<p class="muted">No streams yet. Run <code>cf detect &lt;channel&gt;</code>.</p>';
+    return;
+  }
+  el.innerHTML = data.map(s => `
+    <div class="stream">
+      <div><strong>${esc(s.title)}</strong>
+        <span class="status">${s.status}</span></div>
+      <div class="muted">${s.video_id} · ${new Date(s.first_seen_at).toLocaleString()}</div>
+      ${renderClips(s)}
+    </div>`).join('');
+}
+
+function renderClips(s) {
+  if (!s.clips.length) return '<p class="muted">no clips rendered yet</p>';
+  const cards = s.clips.filter(c => c.playable).map(c => {
+    const src = '/files/' + encodeURIComponent(c.output_path.replaceAll('\\', '/'));
+    const wide = c.layout === 'passthrough';
+    const secs = Math.round(c.end_sec - c.start_sec);
+    return `<div>
+      <video controls preload="metadata" class="${wide ? 'wide' : ''}" src="${src}"></video>
+      <div class="clip-title">${esc(c.title || '(untitled)')}</div>
+      <span class="muted">${c.layout} · ${secs}s · ${c.status}</span>
+    </div>`;
+  }).join('');
+  return cards ? `<div class="clips">${cards}</div>` : '<p class="muted">no clips rendered yet</p>';
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, m =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+load();
+</script>
+</body>
+</html>
