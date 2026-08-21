@@ -37,6 +37,9 @@ def test_render_clip_builds_expected_ffmpeg_call(tmp_path, monkeypatch):
     assert "-ss" in cmd and "5.000" in cmd
     assert "-to" in cmd and "35.000" in cmd
     assert "libx264" in cmd and "+faststart" in cmd
+    # polish defaults on: loudness normalization + fades
+    assert any("loudnorm" in str(a) for a in cmd)
+    assert any("fade=t=out" in str(a) for a in cmd)
     assert result.width == 1080 and result.height == 1920
     assert result.duration_sec == 30.0
     assert result.captions is False

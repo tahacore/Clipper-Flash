@@ -138,6 +138,12 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     video_chain = chain
+    polish = clip.get("polish", True)
+    dur = end - start
+    if polish:
+        video_chain += (
+            f";[vpre]fade=t=in:st=0:d=0.15,fade=t=out:st={max(dur - 0.25, 0):.3f}:d=0.25"
+        )
     if ass_path:
         video_chain += f";[vpre]{_ass_filter_arg(ass_path)},format=yuv420p[vout]"
     else:
@@ -148,6 +154,15 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
         "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", str(src),
         "-filter_complex", video_chain,
         "-map", "[vout]", "-map", "0:a?",
+    ]
+    if polish:
+        # -14 LUFS matches YouTube/Shorts loudness target; fades avoid abrupt edges
+        cmd += [
+            "-af",
+            f"loudnorm=I=-14:TP=-1.5:LRA=11,"
+            f"afade=t=in:st=0:d=0.15,afade=t=out:st={max(dur - 0.35, 0):.3f}:d=0.35",
+        ]
+    cmd += [
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",

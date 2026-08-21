@@ -5,7 +5,7 @@
 - [x] `cf detect` — RSS channel scan, was-live filter, SQLite dedup, @handle resolution
 - [x] `cf transcript` — captions-first transcription (json3/vtt/srv3), rolling-dedup, segments
 - [x] `cf pull section/audio` — keyframe-exact section downloads, audio-only fallback
-- [x] `cf facecam` — sample-and-vote facecam box (mediapipe → haar fallback)
+- [x] `cf facecam` — sample-and-vote facecam box (OpenCV YuNet, bundled model)
 - [x] `cf render` — vertical-split / face-crop / passthrough + burned ASS captions
 - [x] `cf upload` — YouTube posting via user's own OAuth project
 - [x] `cf serve` — gallery UI with inline previews
