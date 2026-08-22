@@ -197,6 +197,85 @@ def test_render_rejects_unknown_layout(tmp_path, monkeypatch):
         )
 
 
+def test_stacked_captions_sit_on_screen_card(tmp_path, monkeypatch):
+    monkeypatch.setattr(render, "probe", fake_probe)
+    monkeypatch.setattr(
+        render.subprocess,
+        "run",
+        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="", stderr=""),
+    )
+    tpath = tmp_path / "t.json"
+    tpath.write_text(json.dumps({"words": make_words(6)}), encoding="utf-8")
+    (tmp_path / "in.mp4").write_bytes(b"x")
+    spec_clip = {
+        "input": str(tmp_path / "in.mp4"),
+        "out": str(tmp_path / "clip.mp4"),
+        "layout": "stacked",
+        "start": 0.0,
+        "end": 5.0,
+        "captions": True,
+        "transcript": str(tpath),
+        "abs_start": 0.0,
+    }
+    render.render_clip(spec_clip, workdir=tmp_path)
+    style_line = Path(spec_clip["out"]).with_suffix(".ass").read_text(encoding="utf-8")
+    from clipper_flash.layouts import stacked_caption_margin
+
+    assert f",{stacked_caption_margin()},1" in style_line
+
+
+def test_multi_segment_concat_command(tmp_path, monkeypatch):
+    monkeypatch.setattr(render, "probe", fake_probe)
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        if "libx264" in cmd:
+            captured["cmd"] = cmd
+            Path(cmd[-1]).write_bytes(b"fake")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(render.subprocess, "run", fake_run)
+    (tmp_path / "in.mp4").write_bytes(b"x")
+    spec_clip = {
+        "input": str(tmp_path / "in.mp4"),
+        "out": str(tmp_path / "clip.mp4"),
+        "layout": "stacked",
+        "start": 0.0,
+        "end": 20.0,
+        "segments": [
+            {"start": 0.0, "end": 8.0, "layout": "stacked"},
+            {"start": 8.0, "end": 20.0, "layout": "fullframe"},
+        ],
+    }
+    result = render.render_clip(spec_clip, workdir=tmp_path)
+    cmd = captured["cmd"]
+    assert cmd.count("-i") == 2
+    graph = cmd[cmd.index("-filter_complex") + 1]
+    assert "concat=n=2:v=1:a=0" in graph
+    assert "concat=n=2:v=0:a=1" in graph
+    assert "[1:v]" in graph
+    assert result.layout == "segments"
+    assert result.duration_sec == 20.0
+
+
+def test_segments_must_tile(tmp_path, monkeypatch):
+    monkeypatch.setattr(render, "probe", fake_probe)
+    (tmp_path / "in.mp4").write_bytes(b"x")
+    with pytest.raises(render.RenderError, match="contiguously"):
+        render.render_clip(
+            {
+                "input": str(tmp_path / "in.mp4"),
+                "out": str(tmp_path / "o.mp4"),
+                "start": 0,
+                "end": 20,
+                "segments": [
+                    {"start": 0, "end": 5, "layout": "stacked"},
+                    {"start": 8, "end": 20, "layout": "fullframe"},
+                ],
+            }
+        )
+
+
 def test_render_rejects_missing_input(tmp_path):
     with pytest.raises(render.RenderError, match="input missing"):
         render.render_clip({"input": str(tmp_path / "nope.mp4"), "out": "o.mp4"}, workdir=tmp_path)
@@ -217,5 +296,5 @@ def test_render_spec_collects_partial_errors(tmp_path, monkeypatch):
             {"input": str(good), "out": str(tmp_path / "b.mp4"), "start": 0, "end": 10},
         ]
     }
-    results = render.render_spec_from_dict(spec)
-    assert len(results) == 1
+    with pytest.raises(render.RenderError, match="some clips failed"):
+        render.render_spec_from_dict(spec)

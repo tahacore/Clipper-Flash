@@ -8,16 +8,21 @@ Spec file schema (what the agent writes after picking moments):
       "input": "work/<video_id>__<start>-<end>.mp4",
       "out": "output/<video_id>/01-title.mp4",
       "title": "optional title (metadata only)",
-      "layout": "vertical-split" | "face-crop" | "passthrough",
+      "layout": "stacked" | "fullframe" | "vertical-split" | "face-crop" | "passthrough",
       "start": 0.0,                  # seconds, relative to input file
       "end": 60.0,
-      "captions": true,              # true | false | style name ("bold","clean")
-      "transcript": "work/t.json",   # transcript json (absolute-time words)
+      "captions": "hype",            # true | false | style name
+      "transcript": "work/t.json",
       "abs_start": 4980.0,           # absolute stream time of input's t=0
-      "facecam": {"x":..,"y":..,"w":..,"h":..},  # optional px box in source
+      "facecam": {"x":..,"y":..,"w":..,"h":..},
+      "cam_h": 960,                  # stacked only
+      "screen_h": 608,               # stacked only
       "strip_height": 640,           # vertical-split only
-      "caption_margin_v": 700        # optional; vertical-split auto-places
-                                     # captions above the strip by default
+      "caption_margin_v": 700,
+      "segments": [                  # optional; tiles start..end
+        {"start": 0.0, "end": 12.0, "layout": "stacked", "facecam": {...}},
+        {"start": 12.0, "end": 40.0, "layout": "fullframe", "facecam": {...}}
+      ]
     }
   ]
 }
@@ -30,7 +35,14 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from clipper_flash.layouts import LAYOUTS, Box
+from clipper_flash.layouts import (
+    LAYOUTS,
+    SHORTS_LAYOUTS,
+    STACKED_CAM_H,
+    STACKED_SCREEN_H,
+    Box,
+    stacked_caption_margin,
+)
 from clipper_flash.subtitles import make_captions_for_clip
 
 
@@ -84,6 +96,77 @@ def _ass_filter_arg(ass_path: Path) -> str:
     return f"ass='{p}'"
 
 
+def _box(fc: dict | None) -> Box | None:
+    if not fc:
+        return None
+    return Box(int(fc["x"]), int(fc["y"]), int(fc["w"]), int(fc["h"]))
+
+
+def _layout_kwargs(clip: dict, layout_name: str) -> dict:
+    kwargs: dict = {}
+    if layout_name == "vertical-split":
+        kwargs["strip_h"] = int(clip.get("strip_height", 640))
+    if layout_name == "stacked":
+        kwargs["cam_h"] = int(clip.get("cam_h", STACKED_CAM_H))
+        kwargs["screen_h"] = int(clip.get("screen_h", STACKED_SCREEN_H))
+    return kwargs
+
+
+def default_caption_margin(layout_name: str, clip: dict, canvas_h: int) -> int:
+    """Place captions in the Shorts safe zone for the chosen layout."""
+    if layout_name == "vertical-split":
+        return int(clip.get("strip_height", 640)) + 24
+    if layout_name == "stacked":
+        return stacked_caption_margin(
+            int(clip.get("cam_h", STACKED_CAM_H)),
+            int(clip.get("screen_h", STACKED_SCREEN_H)),
+            canvas_h,
+        )
+    if layout_name in ("face-crop", "fullframe"):
+        return int(canvas_h * 0.38)  # chest, above YouTube chrome
+    return 60
+
+
+def normalize_segments(clip: dict, start: float, end: float) -> list[dict]:
+    """Return contiguous file-relative segments covering [start, end]."""
+    raw = clip.get("segments")
+    default_layout = clip.get("layout", "passthrough")
+    if not raw:
+        return [{
+            "start": start,
+            "end": end,
+            "layout": default_layout,
+            "facecam": clip.get("facecam"),
+        }]
+    segs: list[dict] = []
+    cursor = start
+    for i, s in enumerate(raw):
+        a = float(s.get("start", cursor))
+        b = float(s.get("end", end))
+        if b <= a + 0.05:
+            raise RenderError(f"segment {i} too short ({a:.2f}-{b:.2f})")
+        if abs(a - cursor) > 0.08:
+            raise RenderError(
+                f"segments must tile the clip contiguously "
+                f"(gap before segment {i}: expected {cursor:.3f}, got {a:.3f})"
+            )
+        layout = s.get("layout", default_layout)
+        if layout not in LAYOUTS:
+            raise RenderError(f"unknown layout {layout!r}; choose from {sorted(LAYOUTS)}")
+        segs.append({
+            "start": a,
+            "end": b,
+            "layout": layout,
+            "facecam": s.get("facecam", clip.get("facecam")),
+        })
+        cursor = b
+    if abs(cursor - end) > 0.08:
+        raise RenderError(
+            f"segments must cover the clip end (last {cursor:.3f}, clip end {end:.3f})"
+        )
+    return segs
+
+
 def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
     src = Path(clip["input"])
     if not src.exists():
@@ -95,28 +178,44 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
     if end - start < 1.0:
         raise RenderError(f"clip too short ({end - start:.1f}s)")
 
-    layout_name = clip.get("layout", "passthrough")
+    segs = normalize_segments(clip, start, end)
+    layout_name = segs[0]["layout"]
     if layout_name not in LAYOUTS:
         raise RenderError(f"unknown layout {layout_name!r}; choose from {sorted(LAYOUTS)}")
 
-    facecam = None
-    if clip.get("facecam"):
-        fc = clip["facecam"]
-        facecam = Box(int(fc["x"]), int(fc["y"]), int(fc["w"]), int(fc["h"]))
+    chains: list[str] = []
+    canvas = None
+    for i, seg in enumerate(segs):
+        name = seg["layout"]
+        kwargs = _layout_kwargs(clip, name)
+        kwargs["in_label"] = f"{i}:v"
+        kwargs["out_label"] = f"v{i}"
+        chain, canvas = LAYOUTS[name](
+            info["width"], info["height"], facecam=_box(seg.get("facecam")), **kwargs
+        )
+        chains.append(chain)
 
-    kwargs: dict = {}
-    if layout_name == "vertical-split":
-        kwargs["strip_h"] = int(clip.get("strip_height", 640))
-    chain, canvas = LAYOUTS[layout_name](
-        info["width"], info["height"], facecam=facecam, **kwargs
-    )
+    assert canvas is not None
+    n = len(segs)
+    if n == 1:
+        # Keep historical labels so existing tests can grep [vpre]/[vout].
+        video_body = chains[0].replace("[v0]", "[vpre]")
+        vpre = "vpre"
+    else:
+        concat_v = "".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[vpre]"
+        video_body = ";".join([*chains, concat_v])
+        vpre = "vpre"
 
     cap_setting = clip.get("captions", False)
-    cap_style = cap_setting if isinstance(cap_setting, str) else ("clean" if cap_setting else None)
+    if isinstance(cap_setting, str):
+        cap_style: str | None = cap_setting
+    elif cap_setting:
+        cap_style = "hype" if layout_name in SHORTS_LAYOUTS else "clean"
+    else:
+        cap_style = None
     cap_margin = clip.get("caption_margin_v")
-    if cap_margin is None and layout_name == "vertical-split":
-        # Default: sit just ABOVE the facecam strip instead of covering it.
-        cap_margin = int(clip.get("strip_height", 640)) + 24
+    if cap_margin is None:
+        cap_margin = default_caption_margin(layout_name, clip, canvas.height)
     emphasis = [str(e) for e in clip.get("emphasis", [])]
     ass_path: Path | None = None
     if cap_style and clip.get("transcript"):
@@ -141,31 +240,42 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # One sequential chain consumes [vpre]: fades -> (captions) -> pixfmt.
-    # Never fork [vpre] into parallel branches - a label can feed only one
-    # consumer, and the fork silently drops whichever branch loses.
     post: list[str] = []
     polish = clip.get("polish", True)
     dur = end - start
     if polish:
-        post.append(f"fade=t=in:st=0:d=0.15,fade=t=out:st={max(dur - 0.25, 0):.3f}:d=0.25")
+        post.append(f"fade=t=in:st=0:d=0.04,fade=t=out:st={max(dur - 0.25, 0):.3f}:d=0.25")
     if ass_path:
         post.append(f"{_ass_filter_arg(ass_path)}")
     post.append("format=yuv420p")
-    video_chain = f"{chain};[vpre]" + ",".join(post) + "[vout]"
+    video_chain = f"{video_body};[{vpre}]" + ",".join(post) + "[vout]"
 
-    cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", str(src),
-        "-filter_complex", video_chain,
-        "-map", "[vout]", "-map", "0:a?",
-    ]
-    if polish:
-        # -14 LUFS matches YouTube/Shorts loudness target; fades avoid abrupt edges
-        cmd += [
-            "-af",
-            f"loudnorm=I=-14:TP=-1.5:LRA=11,"
-            f"afade=t=in:st=0:d=0.15,afade=t=out:st={max(dur - 0.35, 0):.3f}:d=0.35",
-        ]
+    cmd: list[str] = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+    for seg in segs:
+        cmd += ["-ss", f"{seg['start']:.3f}", "-to", f"{seg['end']:.3f}", "-i", str(src)]
+    cmd += ["-filter_complex", video_chain, "-map", "[vout]"]
+
+    if n == 1:
+        cmd += ["-map", "0:a?"]
+        if polish:
+            cmd += [
+                "-af",
+                f"loudnorm=I=-14:TP=-1.5:LRA=11,"
+                f"afade=t=in:st=0:d=0.04,afade=t=out:st={max(dur - 0.35, 0):.3f}:d=0.35",
+            ]
+    else:
+        a_concat = "".join(f"[{i}:a]" for i in range(n)) + f"concat=n={n}:v=0:a=1"
+        if polish:
+            a_concat += (
+                f",loudnorm=I=-14:TP=-1.5:LRA=11,"
+                f"afade=t=in:st=0:d=0.04,afade=t=out:st={max(dur - 0.35, 0):.3f}:d=0.35"
+            )
+        video_chain = video_chain + f";{a_concat}[aout]"
+        # rebuild cmd filter_complex with audio concat on the same graph
+        fc_idx = cmd.index("-filter_complex")
+        cmd[fc_idx + 1] = video_chain
+        cmd += ["-map", "[aout]"]
+
     cmd += [
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k",
@@ -180,7 +290,7 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
 
     return RenderResult(
         out=str(out_path),
-        layout=layout_name,
+        layout=layout_name if n == 1 else "segments",
         width=canvas.width,
         height=canvas.height,
         duration_sec=round(end - start, 2),
@@ -190,12 +300,12 @@ def render_clip(clip: dict, workdir: str | Path = "work") -> RenderResult:
 
 
 def _extract_poster(out_path: Path, duration: float) -> str | None:
-    """Grab a frame at ~30% in as the gallery poster (<clip>.poster.jpg)."""
+    """Grab a frame at ~8% in as the gallery poster (hook, not a random blink)."""
     try:
         poster = out_path.with_name(out_path.stem + ".poster.jpg")
         cmd = [
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-ss", f"{max(duration * 0.3, 0.5):.3f}", "-i", str(out_path),
+            "-ss", f"{max(duration * 0.08, 0.4):.3f}", "-i", str(out_path),
             "-frames:v", "1", "-q:v", "3", str(poster),
         ]
         subprocess.run(cmd, capture_output=True, text=True)
@@ -224,4 +334,7 @@ def render_spec_from_dict(spec: dict) -> list[RenderResult]:
             errors.append({"index": i, "title": clip.get("title", ""), "error": str(exc)})
     if errors and not results:
         raise RenderError(f"all clips failed: {errors}")
+    if errors:
+        # Surface partial failure so agents don't treat the spec as fully done.
+        raise RenderError(f"some clips failed: {errors}; succeeded={len(results)}")
     return results
