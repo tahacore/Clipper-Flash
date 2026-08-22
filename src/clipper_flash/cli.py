@@ -295,6 +295,41 @@ def facecam(
     typer.echo(f"facecam box: x={fc.x} y={fc.y} w={fc.w} h={fc.h} (confidence {fc.confidence})")
 
 
+# --- scenes ------------------------------------------------------------------
+
+
+@app.command()
+def scenes(
+    video: Path = typer.Argument(..., help="Local video file (a pulled section)."),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output."),
+    sample_fps: float = typer.Option(2.0, "--sample-fps", help="Classification sample rate."),
+) -> None:
+    """Classify screen+cam vs cam-only stretches (and speaker shots)."""
+    from clipper_flash.scenes import SceneError, analyze_video
+
+    try:
+        segs = analyze_video(str(video), sample_fps=sample_fps)
+    except SceneError as exc:
+        _fail(f"{exc}", code=EXIT_RETRYABLE)
+    except ImportError:
+        _fail("vision extras missing - install with: uv tool install 'clipper-flash[vision]'")
+    except Exception as exc:  # noqa: BLE001
+        _fail(str(exc))
+    payload = [s.to_dict() for s in segs]
+    if as_json:
+        _echo_json(payload)
+        return
+    if not payload:
+        typer.echo("no scenes detected")
+        return
+    for s in payload:
+        face = s.get("face")
+        box = f"  face={face['x']},{face['y']} {face['w']}x{face['h']}" if face else ""
+        typer.echo(
+            f"{s['start']:7.2f}-{s['end']:7.2f}  {s['mode']:<11}  layout={s['layout']}{box}"
+        )
+
+
 # --- render ------------------------------------------------------------------
 
 
