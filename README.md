@@ -86,8 +86,9 @@ or
 3. It picks the best moments and shows you: *"I found these 5 clips — want me
    to make them?"* You say yes (or change things).
 4. It downloads **only those minutes** — not the whole 8-hour video.
-5. It cuts them into vertical Shorts with captions burned in, your facecam
-   tucked under your screen. Or wide videos if you asked for those.
+5. It cuts them into vertical Shorts with captions burned in — face on top,
+   your whole screen below (`stacked`), or a tight talking-head (`fullframe`)
+   if you were on camera. Or wide videos if you asked for those.
 6. Your clips are waiting in the `output` folder. 🎉
 
 ### Watch your clips
@@ -150,7 +151,7 @@ remembers you.
 | `cf` is not recognized | Close and reopen your terminal. Still stuck? Reinstall with Step 3. |
 | `ffmpeg NOT FOUND` in `cf doctor` | Install FFmpeg (Step 1), then reopen your terminal. |
 | "captions not available" | YouTube hasn't written them yet. Wait ~30–60 minutes and try again. |
-| Clips look squished or wrong | Tell your agent which layout you want: `vertical-split`, `face-crop`, or `passthrough`. |
+| Clips look squished or wrong | Tell your agent which layout you want: `stacked` (screen + face), `fullframe` (podcast), or `passthrough` (wide). |
 | Agent picked boring clips | Tell it what you like: "pick moments where something funny happened." |
 | Upload says private-only | Google locks new API projects. Request an audit, or flip it public yourself on YouTube. |
 

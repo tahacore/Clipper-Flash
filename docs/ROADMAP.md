@@ -6,7 +6,8 @@
 - [x] `cf transcript` — captions-first transcription (json3/vtt/srv3), rolling-dedup, segments
 - [x] `cf pull section/audio` — keyframe-exact section downloads, audio-only fallback
 - [x] `cf facecam` — sample-and-vote facecam box (OpenCV YuNet, bundled model)
-- [x] `cf render` — vertical-split / face-crop / passthrough + burned ASS captions
+- [x] `cf render` — stacked / fullframe / vertical-split / face-crop / passthrough + burned ASS captions
+- [x] `cf scenes` — screen+cam vs cam-only map for layout picking
 - [x] `cf upload` — YouTube posting via user's own OAuth project
 - [x] `cf serve` — gallery UI with inline previews
 - [x] Agent skill for Claude Code + Codex (`skills/clipper-flash/SKILL.md`)
@@ -18,7 +19,7 @@
 - [ ] **Watch mode** — optional `cf watch` daemon (interval polling) for always-on machines
 - [ ] **Face-track crop** — per-segment speaker tracking instead of static crop
 - [ ] **Podcast layout** — active-speaker switching with blurred pillarbox
-- [ ] **Karaoke captions** — word-pop animation styles
+- [x] **Karaoke captions** — `karaoke-fill` word-sweep style
 - [ ] **Thumbnails** — auto title cards from transcript hooks
 - [ ] **Screen-motion tracking** — follow the active window/cursor in vertical-split
 - [ ] **Multi-platform posting** — TikTok/Reels via Postiz or platform APIs

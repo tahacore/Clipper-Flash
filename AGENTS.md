@@ -16,8 +16,9 @@ read it before driving the toolkit end-to-end.
 | `detect.py` | channel scan → unprocessed former-livestreams |
 | `transcript.py` | caption track pick/download, json3+vtt parsing, cleaning, segments |
 | `pull.py` | exact section downloads (`--download-sections` + keyframe-exact) and audio-only |
-| `facecam.py` | sample-and-vote facecam box detection (mediapipe → haar fallback) |
-| `layouts.py` | filtergraph geometry: vertical-split / face-crop / passthrough |
+| `facecam.py` | sample-and-vote facecam box detection (OpenCV YuNet) |
+| `scenes.py` | screen+cam vs cam-only classification + shot cuts (`cf scenes`) |
+| `layouts.py` | filtergraph geometry: stacked / fullframe / vertical-split / passthrough |
 | `subtitles.py` | ASS caption generation from transcript words |
 | `render.py` | spec-driven ffmpeg rendering |
 
@@ -35,4 +36,4 @@ uv run cf doctor                     # runtime dependency check
 - Keep network I/O out of pure logic; inject fetchers/probes for testability.
 - Every CLI command supports `--json` for machine-readable output.
 - Never commit user media, transcripts, or the state DB (`work/`, `output/`, `*.db`).
-- Python >=3.11,<3.13 (mediapipe wheel support).
+- Python >=3.11,<3.13 (OpenCV YuNet wheel support).

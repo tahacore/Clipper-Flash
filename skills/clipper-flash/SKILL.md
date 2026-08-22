@@ -13,8 +13,8 @@ guess timestamps without reading the transcript.
 ## 0. Preflight
 
 Run `cf doctor` first. If ffmpeg/ffprobe are missing, tell the user to install
-FFmpeg and stop. If vision extras are missing you may continue, but
-`vertical-split` will fall back to an assumed bottom-right facecam box.
+FFmpeg and stop. If vision extras are missing you may continue, but facecam detection and
+`cf scenes` will fail — extract a frame yourself and measure the box.
 
 ## 1. Find work
 
@@ -79,7 +79,10 @@ Keep only windows scoring ≥7 average. Boundary rules:
 - Trim trailing silence using the last word's `end`.
 - Prefer moments spread across the stream over clustered ones.
 - For coding streams, prefer moments where something on screen matters
-  (bugfix reveal, demo, result) — they render well in vertical-split.
+  (bugfix reveal, demo, result) — they render well in `stacked`.
+- First 3 seconds of audio must be the claim/punch. Do not start on
+  throat-clearing, "um", or `[clears throat]`. Do not extend start 3s
+  earlier if that captures filler.
 
 For each kept moment record: `start`, `end` (absolute stream seconds),
 a spoken-language `title` (≤60 chars, no clickbait clichés), and a one-line
@@ -96,21 +99,38 @@ cf pull section <url> <start> <end> -o work/<video_id>__<start>-<end>.mp4
 
 (one call per clip; cuts are keyframe-exact, so file t=0 == requested start)
 
-## 6. Facecam (for vertical layouts)
+## 6. Detect scenes, then facecam
+
+```
+cf scenes work/<video_id>__<start>-<end>.mp4 --json
+```
+
+Each row is `{start, end, mode, layout, face}` in **file-relative** seconds:
+
+| mode | meaning | layout to use |
+|---|---|---|
+| `screen+cam` | desktop + overlay webcam | `stacked` |
+| `cam-only` | talking-head / podcast | `fullframe` |
+| `screen` | no face (slides, BRB) | `stacked` (keep last known facecam) |
+
+If the map is a single `screen+cam` run, one layout for the whole clip.
+If it switches (story on cam → desktop demo), put those rows in the spec
+`segments` array so one file concat-renders both.
+
+Then detect the overlay box on a `screen+cam` stretch (not a cam-only beat):
 
 ```
 cf facecam work/<video_id>__<start>-<end>.mp4 --json
 ```
 
-Use the first pulled section. Pass the returned box into every spec clip of
-that stream. If it fails (exit 2 = no stable region found), do NOT just fall
-back to the default bottom-right assumption - the cam may be in any corner:
+Do this **per clip** (OBS scenes move). If `cf facecam` exits 2, do NOT assume
+bottom-right:
 
 1. Extract one clear frame:
    `ffmpeg -ss <mid-clip-time> -i work/<section>.mp4 -frames:v 1 work/frame.png`
-2. Read the image yourself and locate the facecam overlay.
-3. Measure its pixel box (x, y, w, h) in the source frame and pass that as
-   `facecam` in the spec. Note the corner you observed; mention it to the user.
+2. Read the image and locate the facecam overlay **or** the speaker.
+3. Measure the pixel box (x, y, w, h) and pass it as `facecam`. For
+   `fullframe`, the box should be the speaker, not a fake corner cam.
 
 ## 7. Write the spec & render
 
@@ -123,7 +143,7 @@ back to the default bottom-right assumption - the cam may be in any corner:
       "input":  "work/<video_id>__4980-5040.mp4",
       "out":    "output/<video_id>/01-<slug>.mp4",
       "title":  "<your title>",
-      "layout": "vertical-split",
+      "layout": "stacked",
       "start": 0.0, "end": 60.0,
       "captions": "hype",
       "emphasis": ["never", "$10K"],
@@ -133,6 +153,16 @@ back to the default bottom-right assumption - the cam may be in any corner:
     }
   ]
 }
+```
+
+If `cf scenes` reported a mid-clip switch, add `segments` (file-relative,
+must tile `start`..`end`):
+
+```json
+"segments": [
+  {"start": 0.0, "end": 18.0, "layout": "stacked", "facecam": {"x": 1490, "y": 793, "w": 422, "h": 237}},
+  {"start": 18.0, "end": 60.0, "layout": "fullframe", "facecam": {"x": 820, "y": 120, "w": 640, "h": 720}}
+]
 ```
 
 **Caption styles** (`captions` key): `hype` (big font, yellow word-pop -
@@ -146,9 +176,20 @@ that CARRY the moment ("never", "$10K", "wrong"). They get permanent golden
 highlight in every frame they appear. This is your typographic judgment;
 the renderer just executes it.
 
-Layouts: `vertical-split` (screen top + facecam strip below — default for
-coding/dev streams), `face-crop` (talking-head), `passthrough` (16:9 long-form;
-use `start`/`end` relative to input, captions still supported).
+Layouts:
+
+- `stacked` — **default for coding/dev streams**. Face fills a top card,
+  entire 16:9 desktop fitted below, captions on the screen. Matches the
+  person+screen Shorts template.
+- `fullframe` — **default for podcast / cam-only**. Tight 9:16 crop on the
+  speaker. Use the scene map's `face` when speakers switch.
+- `vertical-split` — legacy (screen cover-cropped on top, cam strip below).
+  Only if the user asks for it.
+- `face-crop` — alias of `fullframe`.
+- `passthrough` — 16:9 long-form; `start`/`end` relative to input.
+
+Never pick `vertical-split` for a new Short unless the user insists. Never
+put a corner-cam prior on a podcast — that crops the wallpaper.
 
 ```
 cf render work/<video_id>.spec.json --video-id <video_id> --json
