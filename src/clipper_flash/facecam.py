@@ -100,10 +100,18 @@ def make_yunet_detector():
     if not _YUNET_MODEL.exists():
         return None
 
+    holder: dict = {"det": None, "size": None}
+
     def detect(frame_bgr):
         h, w = frame_bgr.shape[:2]
-        det = cv2.FaceDetectorYN.create(str(_YUNET_MODEL), "", (w, h), score_threshold=0.6)
-        _, faces = det.detect(frame_bgr)
+        if holder["det"] is None or holder["size"] != (w, h):
+            holder["det"] = cv2.FaceDetectorYN.create(
+                str(_YUNET_MODEL), "", (w, h), score_threshold=0.6
+            )
+            holder["size"] = (w, h)
+        else:
+            holder["det"].setInputSize((w, h))
+        _, faces = holder["det"].detect(frame_bgr)
         out = []
         if faces is not None:
             for f in faces:
@@ -188,8 +196,9 @@ def expand_face_to_cam(face: Facecam, src_w: int, src_h: int) -> Facecam:
     cam_w = min(cam_h * 16 / 9, src_w)
     cam_h = min(cam_w * 9 / 16, src_h)  # re-derive after width clamp
     x = _clamp(int(fx - cam_w / 2), 0, src_w - round(cam_w))
-    # bias upward: faces sit in the upper half of a typical cam window
-    y = _clamp(int(fy - cam_h * 0.45), 0, src_h - round(cam_h))
+    # slight upward bias (hair), not 0.45 — that ate YouTube Studio chrome
+    # sitting on the top edge of bottom-left overlays
+    y = _clamp(int(fy - cam_h * 0.32), 0, src_h - round(cam_h))
     return Facecam(x=x, y=y, w=round(cam_w), h=round(cam_h), confidence=face.confidence)
 
 
